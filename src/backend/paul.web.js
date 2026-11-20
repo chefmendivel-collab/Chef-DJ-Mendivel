@@ -1,5 +1,5 @@
 // Paul v2.5 compact — under 15k chars. backend/paul.web.js
-// Secrets (names only): OPENROUTER_API_KEY, GROQ_API_KEY, PAUL_OWNER_KEY, API_KEY, LLM_PAUL_KEY, VERCEL_API, GEMINI_API_KEY, OPENAI_KEY, plus LLM_API_KEY, GOOGLE_CALENDAR_ICAL_URL, MUSE_API_KEY, PAUL_KEY, ELEVEN_KEY, HEYGEN_KEY, Chef.
+// Linked to Winston's actual Wix secrets (Nov 19, 2026): OPENROUTER_API_KEY, GROQ_API_KEY, PAUL_OWNER_KEY, API_KEY, LLM_PAUL_KEY, VERCEL_API, GEMINI_API_KEY, OPENAI_KEY, ELEVEN_KEY, HEYGEN_KEY, Chef. Optional if ever added: LLM_API_KEY, MUSE_API_KEY, PAUL_KEY, GITHUB_KNOWLEDGE_URL, PAUL_LLM_PROVIDER, GOOGLE_CALENDAR_ICAL_URL (calendar — without it, dates fall back to the known Dec 24/25 bookings only).
 import { secrets } from 'wix-secrets-backend';
 import { fetch } from 'wix-fetch';
 import wixData from 'wix-data';
@@ -20,7 +20,7 @@ async function know() {
   return { src: 'built-in', d: null };
 }
 async function openai(sys, msg) {
-  let k = await sec('LLM_API_KEY') || await sec('LLM_PAUL_KEY') || await sec('OPENAI_KEY') || await sec('API_KEY');
+  let k = await sec('LLM_PAUL_KEY') || await sec('OPENAI_KEY') || await sec('API_KEY') || await sec('LLM_API_KEY');
   if (!k) throw new Error('no openai');
   const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'post', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: sys }, { role: 'user', content: msg }], temperature: 0.7 }) });
   if (!r.ok) throw new Error('openai ' + r.status);
@@ -59,13 +59,20 @@ async function llm(sys, msg, want) {
   throw err;
 }
 export async function get_status() {
-  return { status: 200, body: { llm: { openai: await has('LLM_API_KEY'), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
+  return { status: 200, body: { llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
 }
 export async function get_availability(req) {
   try {
     const d = req.query.date || ''; const o = await isOwner(req.query.ownerKey || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { status: 400, body: { error: 'Use ?date=YYYY-MM-DD' } };
-    const ev = (await cal()).filter(e => dayOf(e.a) === d.replace(/-/g, '') && e.st !== 'CANCELLED');
+    let ev = [];
+    try { ev = (await cal()).filter(e => dayOf(e.a) === d.replace(/-/g, '') && e.st !== 'CANCELLED'); }
+    catch (e) {
+      const k = d.replace(/-/g, '');
+      if (k === '20261224') ev = [{ s: 'Samantha Meyer, Sunriver, 5-9pm PT', a: '', e: '', l: 'Sunriver' }];
+      else if (k === '20261225') ev = [{ s: 'Jeff Seasonal Tasting, 6-9pm PT', a: '', e: '', l: '' }];
+      else return { status: 200, body: { date: d, status: 'unknown', note: 'Calendar not connected — our team will confirm. Call +1-445-447-6332.' } };
+    }
     if (!ev.length) return { status: 200, body: { date: d, status: 'free' } };
     if (o) return { status: 200, body: { date: d, status: 'busy', owner: true, events: ev.map(e => ({ summary: e.s, start: e.a, end: e.e, location: e.l })) } };
     return { status: 200, body: { date: d, status: 'busy', note: 'Not available — our team will suggest another time.' } };
