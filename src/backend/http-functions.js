@@ -17,9 +17,12 @@ const HANDLERS = {
   deployments: { get: get_deployments }
 };
 
-const json = (status, body) => response({ status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' };
+
+const json = (status, body) => response({ status, headers: CORS, body: JSON.stringify(body) });
 
 async function run(request) {
+  if ((request.method || 'get').toLowerCase() === 'options') return response({ status: 204, headers: CORS, body: '' });
   const seg = (request.path && request.path[0]) || '';
   const method = (request.method || 'get').toLowerCase();
   const h = HANDLERS[seg] && HANDLERS[seg][method];
