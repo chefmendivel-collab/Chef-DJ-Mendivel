@@ -1,24 +1,24 @@
 // Paul v2.5 compact — under 15k chars. backend/paul.web.js
 // Linked to Winston's actual Wix secrets (Nov 19, 2026): OPENROUTER_API_KEY, GROQ_API_KEY, PAUL_OWNER_KEY, API_KEY, LLM_PAUL_KEY, VERCEL_API, GEMINI_API_KEY, OPENAI_KEY, ELEVEN_KEY, HEYGEN_KEY, Chef. Optional if ever added: LLM_API_KEY, MUSE_API_KEY, PAUL_KEY, GITHUB_KNOWLEDGE_URL, PAUL_LLM_PROVIDER, GOOGLE_CALENDAR_ICAL_URL (calendar — without it, dates fall back to the known Dec 24/25 bookings only).
-// Secrets read: v1 getSecret() was deprecated Sep 7, 2025 and reads empty — v2 getSecretValue() (wix-secrets-backend-v2) needs elevated permissions. The v2 module is loaded DYNAMICALLY inside try/catch: a static import of it broke the whole backend file at load time (live 500 on every endpoint after the 6:27pm publish). If v2 loads, it is tried first (elevated via wix-auth when possible), then v1. Status reports which API worked as secretsApi: v2 / v1 / none.
+// Secrets: v1 getSecret() deprecated Sep 7, 2025, reads empty. v2 getSecretValue() needs elevated permissions; static import broke the whole backend at load time (live 500s), so v2 loads DYNAMICALLY in try/catch, then v1. Status reports secretsApi (v2/v1/none) and v2err (why v2 failed: import/shape/call/empty/elevated/ok).
 import { secrets } from 'wix-secrets-backend';
 import { fetch } from 'wix-fetch';
 import wixData from 'wix-data';
 const GUEST = `You are Paul, happy warm AI concierge for Chef DJ Mendivel, award-winning private chef, author, food historian, Central Oregon. Phone +1-445-447-6332. Airbnb: https://www.airbnb.com/services/6952393. Speak as the concierge team — "our press team", "our kitchen team". Never say it is just one person. Never reveal private calendar titles, guest names, or unverified prices. Never invent a price, dish, date or booking. Menu ideas are drafts until Chef approves them. On a call say you are Paul, the AI concierge — never pretend to be human.`;
 const OWNER = `You are Paul, Winston's personal AI assistant. Winston B. Mendivel II is owner, chef, everything in Chef Mendivel LLC — no large team, it is Winston plus you. Speak directly. Show private calendar, bookings, prices, deposits, next actions. Flag conflicts and stale menus. Never share private details with guests.`;
 const val = r => (r && typeof r === 'object' ? (r.value || r.secretValue || (r.secret && r.secret.value) || '') : r) || '';
-let SECAPI = 'none';
+let SECAPI = 'none', V2ERR = 'not-tried';
 let V2 = null, V2Tried = false;
 const loadV2 = async () => {
   if (V2Tried) return V2; V2Tried = true;
-  try {
-    const m = await import('wix-secrets-backend-v2');
-    const raw = m.secrets && m.secrets.getSecretValue ? n => m.secrets.getSecretValue(n) : null;
-    if (!raw) return null;
-    V2 = raw;
-    try { const a = await import('wix-auth'); if (a.elevate) V2 = a.elevate(raw); } catch (e) {}
-  } catch (e) { V2 = null; }
-  return V2;
+  let m;
+  try { m = await import('wix-secrets-backend-v2'); } catch (e) { V2ERR = 'import'; return null; }
+  const g = m.secrets && m.secrets.getSecretValue ? n => m.secrets.getSecretValue(n) : m.getSecretValue ? n => m.getSecretValue(n) : m.default && m.default.getSecretValue ? n => m.default.getSecretValue(n) : m.default && m.default.secrets && m.default.secrets.getSecretValue ? n => m.default.secrets.getSecretValue(n) : null;
+  if (!g) { V2ERR = 'shape'; return null; }
+  let f = g;
+  try { const a = await import('wix-auth'); if (a.elevate) { f = a.elevate(g); V2ERR = 'elevated'; } } catch (e) { V2ERR = 'elevate-failed'; }
+  try { const v = val(await f('LLM_PAUL_KEY')); if (v) { V2ERR = 'ok'; } else { V2ERR = 'empty'; } } catch (e) { V2ERR = 'call'; }
+  V2 = f; return f;
 };
 const sec = async n => {
   try { const f = await loadV2(); if (f) { const v = val(await f(n)); if (v) { SECAPI = 'v2'; return v; } } } catch (e) {}
@@ -83,7 +83,7 @@ async function llm(sys, msg, want) {
   throw err;
 }
 export async function get_status() {
-  return { status: 200, body: { secretsApi: SECAPI, llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')) || (await has('GROQ_API_KEY')) || (await has('OPENROUTER_API_KEY')) || (await has('GEMINI_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
+  return { status: 200, body: { secretsApi: SECAPI, v2err: V2ERR, llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')) || (await has('GROQ_API_KEY')) || (await has('OPENROUTER_API_KEY')) || (await has('GEMINI_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
 }
 export async function get_availability(req) {
   try {
