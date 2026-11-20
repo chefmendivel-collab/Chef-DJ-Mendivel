@@ -1,16 +1,27 @@
 // Paul v2.5 compact — under 15k chars. backend/paul.web.js
 // Linked to Winston's actual Wix secrets (Nov 19, 2026): OPENROUTER_API_KEY, GROQ_API_KEY, PAUL_OWNER_KEY, API_KEY, LLM_PAUL_KEY, VERCEL_API, GEMINI_API_KEY, OPENAI_KEY, ELEVEN_KEY, HEYGEN_KEY, Chef. Optional if ever added: LLM_API_KEY, MUSE_API_KEY, PAUL_KEY, GITHUB_KNOWLEDGE_URL, PAUL_LLM_PROVIDER, GOOGLE_CALENDAR_ICAL_URL (calendar — without it, dates fall back to the known Dec 24/25 bookings only).
-// Secrets read: v1 getSecret() was deprecated Sep 7, 2025 and reads empty — now tries v2 getSecretValue() first (wix-secrets-backend-v2), then v1 as fallback. Status reports which API worked as secretsApi: v2 / v1 / none.
+// Secrets read: v1 getSecret() was deprecated Sep 7, 2025 and reads empty — v2 getSecretValue() (wix-secrets-backend-v2) needs elevated permissions. The v2 module is loaded DYNAMICALLY inside try/catch: a static import of it broke the whole backend file at load time (live 500 on every endpoint after the 6:27pm publish). If v2 loads, it is tried first (elevated via wix-auth when possible), then v1. Status reports which API worked as secretsApi: v2 / v1 / none.
 import { secrets } from 'wix-secrets-backend';
-import { secrets as secretsV2 } from 'wix-secrets-backend-v2';
 import { fetch } from 'wix-fetch';
 import wixData from 'wix-data';
 const GUEST = `You are Paul, happy warm AI concierge for Chef DJ Mendivel, award-winning private chef, author, food historian, Central Oregon. Phone +1-445-447-6332. Airbnb: https://www.airbnb.com/services/6952393. Speak as the concierge team — "our press team", "our kitchen team". Never say it is just one person. Never reveal private calendar titles, guest names, or unverified prices. Never invent a price, dish, date or booking. Menu ideas are drafts until Chef approves them. On a call say you are Paul, the AI concierge — never pretend to be human.`;
 const OWNER = `You are Paul, Winston's personal AI assistant. Winston B. Mendivel II is owner, chef, everything in Chef Mendivel LLC — no large team, it is Winston plus you. Speak directly. Show private calendar, bookings, prices, deposits, next actions. Flag conflicts and stale menus. Never share private details with guests.`;
 const val = r => (r && typeof r === 'object' ? (r.value || r.secretValue || (r.secret && r.secret.value) || '') : r) || '';
 let SECAPI = 'none';
+let V2 = null, V2Tried = false;
+const loadV2 = async () => {
+  if (V2Tried) return V2; V2Tried = true;
+  try {
+    const m = await import('wix-secrets-backend-v2');
+    const raw = m.secrets && m.secrets.getSecretValue ? n => m.secrets.getSecretValue(n) : null;
+    if (!raw) return null;
+    V2 = raw;
+    try { const a = await import('wix-auth'); if (a.elevate) V2 = a.elevate(raw); } catch (e) {}
+  } catch (e) { V2 = null; }
+  return V2;
+};
 const sec = async n => {
-  try { const v = val(await secretsV2.getSecretValue(n)); if (v) { SECAPI = 'v2'; return v; } } catch (e) {}
+  try { const f = await loadV2(); if (f) { const v = val(await f(n)); if (v) { SECAPI = 'v2'; return v; } } } catch (e) {}
   try { const v = await secrets.getSecret(n) || ''; if (v) SECAPI = 'v1'; return v; } catch (e) { return ''; }
   return '';
 };
