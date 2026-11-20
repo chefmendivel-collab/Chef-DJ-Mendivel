@@ -1,6 +1,6 @@
 // Paul v2.5 compact — under 15k chars. backend/paul.web.js
 // Linked to Winston's actual Wix secrets (Nov 19, 2026): OPENROUTER_API_KEY, GROQ_API_KEY, PAUL_OWNER_KEY, API_KEY, LLM_PAUL_KEY, VERCEL_API, GEMINI_API_KEY, OPENAI_KEY, ELEVEN_KEY, HEYGEN_KEY, Chef. Optional if ever added: LLM_API_KEY, MUSE_API_KEY, PAUL_KEY, GITHUB_KNOWLEDGE_URL, PAUL_LLM_PROVIDER, GOOGLE_CALENDAR_ICAL_URL (calendar — without it, dates fall back to the known Dec 24/25 bookings only).
-// Secrets: v1 getSecret() deprecated Sep 7, 2025, reads empty. v2 getSecretValue() needs elevated permissions; static import broke the whole backend at load time (live 500s), so v2 loads DYNAMICALLY in try/catch, then v1. Status reports secretsApi (v2/v1/none) and v2err (why v2 failed: import/shape/call/empty/elevated/ok).
+// Secrets: v1 getSecret() deprecated Sep 7, 2025, reads empty; v2 getSecretValue() module cannot even be imported in this backend (v2err "import" live). Fallback: PaulSecrets CMS collection (fields name/value, backend-only read via suppressAuth) — Winston pastes key values there himself. Status reports secretsApi (v2/v1/cms/none) and v2err.
 import { secrets } from 'wix-secrets-backend';
 import { fetch } from 'wix-fetch';
 import wixData from 'wix-data';
@@ -22,8 +22,16 @@ const loadV2 = async () => {
 };
 const sec = async n => {
   try { const f = await loadV2(); if (f) { const v = val(await f(n)); if (v) { SECAPI = 'v2'; return v; } } } catch (e) {}
-  try { const v = await secrets.getSecret(n) || ''; if (v) SECAPI = 'v1'; return v; } catch (e) { return ''; }
+  try { const v = await secrets.getSecret(n) || ''; if (v) SECAPI = 'v1'; return v; } catch (e) {}
+  try { const v = await cmsSec(n); if (v) { SECAPI = 'cms'; return v; } } catch (e) {}
   return '';
+};
+let CMS = null;
+const cmsSec = async n => {
+  try {
+    if (!CMS) { const r = await wixData.query('PaulSecrets').limit(50).find({ suppressAuth: true }); CMS = {}; r.items.forEach(i => { if (i.name) CMS[i.name] = i.value || ''; }); }
+    return CMS[n] || '';
+  } catch (e) { return ''; }
 };
 const has = async n => !!(await sec(n));
 const isOwner = async k => { if (!k) return false; return k === await sec('PAUL_OWNER_KEY') || k === await sec('PAUL_KEY'); };
