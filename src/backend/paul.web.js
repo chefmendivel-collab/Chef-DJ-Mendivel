@@ -20,11 +20,16 @@ async function know() {
   return { src: 'built-in', d: null };
 }
 async function openai(sys, msg) {
-  let k = await sec('LLM_PAUL_KEY') || await sec('OPENAI_KEY') || await sec('API_KEY') || await sec('LLM_API_KEY');
-  if (!k) throw new Error('no openai');
-  const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'post', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: sys }, { role: 'user', content: msg }], temperature: 0.7 }) });
-  if (!r.ok) throw new Error('openai ' + r.status);
-  return (await r.json()).choices[0].message.content;
+  const names = ['LLM_PAUL_KEY', 'OPENAI_KEY', 'API_KEY', 'LLM_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY'];
+  let last = null;
+  for (const n of names) {
+    const k = await sec(n); if (!k) continue;
+    const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'post', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: sys }, { role: 'user', content: msg }], temperature: 0.7 }) });
+    if (r.ok) return (await r.json()).choices[0].message.content;
+    last = new Error('openai ' + r.status + ' (' + n + ')');
+    if (r.status !== 401 && r.status !== 403) break;
+  }
+  throw last || new Error('no openai');
 }
 async function groq(sys, msg) {
   const k = await sec('GROQ_API_KEY'); if (!k) throw new Error('no groq');
@@ -59,7 +64,7 @@ async function llm(sys, msg, want) {
   throw err;
 }
 export async function get_status() {
-  return { status: 200, body: { llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
+  return { status: 200, body: { llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')) || (await has('GROQ_API_KEY')) || (await has('OPENROUTER_API_KEY')) || (await has('GEMINI_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
 }
 export async function get_availability(req) {
   try {
