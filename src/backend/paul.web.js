@@ -1,11 +1,19 @@
 // Paul v2.5 compact — under 15k chars. backend/paul.web.js
 // Linked to Winston's actual Wix secrets (Nov 19, 2026): OPENROUTER_API_KEY, GROQ_API_KEY, PAUL_OWNER_KEY, API_KEY, LLM_PAUL_KEY, VERCEL_API, GEMINI_API_KEY, OPENAI_KEY, ELEVEN_KEY, HEYGEN_KEY, Chef. Optional if ever added: LLM_API_KEY, MUSE_API_KEY, PAUL_KEY, GITHUB_KNOWLEDGE_URL, PAUL_LLM_PROVIDER, GOOGLE_CALENDAR_ICAL_URL (calendar — without it, dates fall back to the known Dec 24/25 bookings only).
+// Secrets read: v1 getSecret() was deprecated Sep 7, 2025 and reads empty — now tries v2 getSecretValue() first (wix-secrets-backend-v2), then v1 as fallback. Status reports which API worked as secretsApi: v2 / v1 / none.
 import { secrets } from 'wix-secrets-backend';
+import { secrets as secretsV2 } from 'wix-secrets-backend-v2';
 import { fetch } from 'wix-fetch';
 import wixData from 'wix-data';
 const GUEST = `You are Paul, happy warm AI concierge for Chef DJ Mendivel, award-winning private chef, author, food historian, Central Oregon. Phone +1-445-447-6332. Airbnb: https://www.airbnb.com/services/6952393. Speak as the concierge team — "our press team", "our kitchen team". Never say it is just one person. Never reveal private calendar titles, guest names, or unverified prices. Never invent a price, dish, date or booking. Menu ideas are drafts until Chef approves them. On a call say you are Paul, the AI concierge — never pretend to be human.`;
 const OWNER = `You are Paul, Winston's personal AI assistant. Winston B. Mendivel II is owner, chef, everything in Chef Mendivel LLC — no large team, it is Winston plus you. Speak directly. Show private calendar, bookings, prices, deposits, next actions. Flag conflicts and stale menus. Never share private details with guests.`;
-const sec = async n => { try { return await secrets.getSecret(n) || ''; } catch (e) { return ''; } };
+const val = r => (r && typeof r === 'object' ? (r.value || r.secretValue || (r.secret && r.secret.value) || '') : r) || '';
+let SECAPI = 'none';
+const sec = async n => {
+  try { const v = val(await secretsV2.getSecretValue(n)); if (v) { SECAPI = 'v2'; return v; } } catch (e) {}
+  try { const v = await secrets.getSecret(n) || ''; if (v) SECAPI = 'v1'; return v; } catch (e) { return ''; }
+  return '';
+};
 const has = async n => !!(await sec(n));
 const isOwner = async k => { if (!k) return false; return k === await sec('PAUL_OWNER_KEY') || k === await sec('PAUL_KEY'); };
 const parseIcal = t => t.replace(/\r?\n[ \t]/g, '').split('BEGIN:VEVENT').slice(1).map(b => {
@@ -64,7 +72,7 @@ async function llm(sys, msg, want) {
   throw err;
 }
 export async function get_status() {
-  return { status: 200, body: { llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')) || (await has('GROQ_API_KEY')) || (await has('OPENROUTER_API_KEY')) || (await has('GEMINI_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
+  return { status: 200, body: { secretsApi: SECAPI, llm: { openai: (await has('LLM_PAUL_KEY')) || (await has('OPENAI_KEY')) || (await has('API_KEY')) || (await has('LLM_API_KEY')) || (await has('GROQ_API_KEY')) || (await has('OPENROUTER_API_KEY')) || (await has('GEMINI_API_KEY')), LLM_PAUL_KEY: await has('LLM_PAUL_KEY'), OPENAI_KEY: await has('OPENAI_KEY'), API_KEY: await has('API_KEY'), groq: await has('GROQ_API_KEY'), openrouter: await has('OPENROUTER_API_KEY'), gemini: await has('GEMINI_API_KEY'), muse: await has('MUSE_API_KEY') }, owner: await has('PAUL_OWNER_KEY'), voice: await has('ELEVEN_KEY'), avatar: await has('Chef'), calendar: await has('GOOGLE_CALENDAR_ICAL_URL'), vercel: await has('VERCEL_API') } };
 }
 export async function get_availability(req) {
   try {
